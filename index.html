@@ -1,1 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>朋友圈-友链RSS聚合浏览</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .rss-container {
+            margin-bottom: 30px;
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .rss-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .rss-logo {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            margin-right: 15px;
+            object-fit: cover;
+        }
+        
+        .rss-name {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .rss-name a {
+            text-decoration: none;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .rss-name a:hover {
+            color: #3498db;
+        }
+        
+        .rss-items {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .rss-item {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 5px;
+            background: #f9f9f9;
+        }
+        
+        .rss-item a {
+            text-decoration: none;
+            color: #2c3e50;
+            font-size: 1.1em;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .rss-item a:hover {
+            color: #3498db;
+        }
+        
+        .rss-date {
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+<div class="rss-container">
+        <div class="rss-header">
+        <div class="rss-name">
+        <p>朋友圈-友链RSS聚合浏览</p>
+        <p>在你的友链内嵌入该页面即可订阅友链更新</p>
+        <p>使用本项目请保留开源地址</p>
+        </div>
+        </div>
+</div>
 
+<div id="rss-feed"></div>
+<script>
+//针对部分RSS启用代理
+//代理可以自部署：https://github.com/eraycc/cloudflare-safeproxy
+const proxyUrl = "https://youproxyurl/";
+
+/*
+  {
+    "rssname": "",
+    "rsslogo": "",
+    "baseurl": "",
+    "rssurl": "",
+    "rssnum": "",
+    "isproxy": true
+  },
+*/
+
+// RSS配置 使用php代理RSS默认缓存12h
+const rssFeeds = [
+  {
+    "rssname": "RSSname示例",
+    "rsslogo": "https://rss/logo",
+    "baseurl": "https://rss",
+    "rssurl": "https://rss/rss.xml", 
+    /*使用本项目自带的php rss代理来解决跨域问题: https://domain/getrss?rssurl=https://rss/rss.xml，你甚至可以配合proxyurl一起使用，比如:https://domain/getrss?rssurl=https://proxyurl/https://rss/rss.xml*/
+    "rssnum": "36", //最大展示数量
+    "isproxy": false //是否使用代理
+  },
+  {
+    "rssname": "十年之约",
+    "rsslogo": "https://www.foreverblog.cn/favicon.ico",
+    "baseurl": "https://www.foreverblog.cn",
+    "rssurl": "https://tool.bcrjl.com/snzy-rss/",
+    "rssnum": "36",
+    "isproxy": false
+  },
+  {
+    "rssname": "博友圈-推荐",
+    "rsslogo": "https://www.boyouquan.com/assets/favicon.ico",
+    "baseurl": "https://www.boyouquan.com",
+    "rssurl": "https://www.boyouquan.com/feed.xml?sort=recommended",
+    "rssnum": "20",
+    "isproxy": false
+  },
+  {
+    "rssname": "博友圈-最新",
+    "rsslogo": "https://www.boyouquan.com/assets/favicon.ico",
+    "baseurl": "https://www.boyouquan.com",
+    "rssurl": "https://www.boyouquan.com/feed.xml?sort=latest",
+    "rssnum": "30",
+    "isproxy": false
+  },
+];
+
+// 处理链接地址
+function processLink(link, useProxy) {
+    return useProxy ? `${proxyUrl}${link}` : link;
+}
+
+// 格式化日期
+function formatDate(dateStr) {
+    try {
+        const date = new Date(dateStr);
+        return date.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        }).replace(/\//g, '-');
+    } catch (e) {
+        return dateStr;
+    }
+}
+
+// 清理标题文本
+function cleanTitle(title) {
+    if (!title) return '';
+    return title.replace(/<!\[CDATA\[(.*?)\]\]>/g, '$1').trim().replace(/\s+/g, ' ');
+}
+
+//Fisher-Yates洗牌算法
+function shuffleArray(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+}
+ 
+// 解析RSS内容
+async function parseRSS(rssUrl, maxItems, useProxy) {
+    try {
+        const response = await fetch(rssUrl);
+        const text = await response.text();
+        const parser = new DOMParser();
+        const xml = parser.parseFromString(text, 'text/xml');
+        const results = [];
+
+        // 支持RSS 2.0
+        let items = xml.querySelectorAll('item');
+        
+        // 支持RSS 1.0
+        if (items.length === 0) {
+            items = xml.querySelectorAll('rdf\\:item, item');
+        }
+        
+        // 支持Atom
+        if (items.length === 0) {
+            items = xml.querySelectorAll('entry');
+        }
+
+        for (let i = 0; i < Math.min(items.length, maxItems); i++) {
+            const item = items[i];
+            let title, link, pubDate;
+
+            // RSS 2.0 和 RSS 1.0
+            title = item.querySelector('title')?.textContent;
+            link = item.querySelector('link')?.textContent;
+            pubDate = item.querySelector('pubDate, dc\\:date, updated')?.textContent;
+
+            // Atom 格式特殊处理
+            if (!link && item.querySelector('link')) {
+                link = item.querySelector('link').getAttribute('href');
+            }
+            if (!pubDate) {
+                pubDate = item.querySelector('published, updated')?.textContent;
+            }
+
+            if (title && link) {
+                // 根据useProxy处理链接
+                const processedLink = processLink(link, useProxy);
+                results.push({
+                    title: cleanTitle(title),
+                    link: processedLink,
+                    pubDate: formatDate(pubDate)
+                });
+            }
+        }
+
+        return results;
+    } catch (error) {
+        console.error(`解析RSS失败 (${rssUrl}):`, error);
+        return [];
+    }
+}
+
+// 显示单个RSS源的内容
+function displayRSSFeed(container, name, feed) {
+    const feedHtml = `
+        <div class="rss-container">
+            <div class="rss-header">
+                <img class="rss-logo" src="${feed.logo}" alt="${name}">
+                <div class="rss-name"><a href="${feed.bsurl}" target="_blank">${name}</a></div>
+            </div>
+            <ul class="rss-items">
+                ${feed.items.map(item => `
+                    <li class="rss-item">
+                        <a href="${item.link}" target="_blank">${item.title}</a>
+                        <div class="rss-date">${item.pubDate}</div>
+                    </li>
+                `).join('')}
+            </ul>
+        </div>
+    `;
+    container.insertAdjacentHTML('beforeend', feedHtml);
+}
+
+// 获取并展示RSS内容
+async function fetchAndDisplayRSS() {
+    const container = document.getElementById('rss-feed');
+    
+    // 随机排序RSS源配置，但最终展示顺序由加载速度决定
+    const shuffledFeeds = shuffleArray(rssFeeds);
+
+    // 异步加载每个RSS源
+    shuffledFeeds.forEach(async feed => {
+        try {
+            const items = await parseRSS(feed.rssurl, feed.rssnum, feed.isproxy);
+            if (items.length > 0) {
+                const feedData = {
+                    logo: feed.rsslogo,
+                    bsurl: feed.baseurl,
+                    items: items.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate))
+                };
+                displayRSSFeed(container, feed.rssname, feedData);
+            }
+        } catch (error) {
+            console.error(`加载RSS失败 (${feed.rssname}):`, error);
+        }
+    });
+}
+
+// 页面加载完成后执行
+document.addEventListener('DOMContentLoaded', fetchAndDisplayRSS);
+</script>
+</body>
+</html>
