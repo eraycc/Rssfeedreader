@@ -1,5 +1,6 @@
 <?php
 // getrss
+
 // 设置响应头
 header('Content-Type: text/xml; charset=utf-8');
 header('Access-Control-Allow-Origin: *'); // 建议修改为具体的域名
@@ -12,11 +13,7 @@ define('CACHE_TIME', 43200); // 缓存时间：12小时
 define('RATE_LIMIT', 30); // 频率限制：每分钟30次
 define('RATE_LIMIT_WINDOW', 60); // 频率限制窗口：60秒
 
-// 允许的主机白名单
-$allowedHosts = array(
-    'rss1.domain.com',
-    // 添加更多允许的主机
-);
+include __DIR__ . '/allowhosts.php';
 
 // 确保缓存目录存在
 if (!file_exists(CACHE_DIR)) {
@@ -31,14 +28,21 @@ function returnError($message) {
     $error = '<?xml version="1.0" encoding="UTF-8"?>';
     $error .= '<rss version="2.0">';
     $error .= '<channel>';
-    $error .= '<title>Error</title>';
+    $error .= '<title>获取RSS错误</title>';
+    $error .= '<link>#</link>';
     $error .= '<description>' . htmlspecialchars($message) . '</description>';
+    $error .= '<item>';
+    $error .= '<title>出错辣，' . htmlspecialchars($message) . '</title>';
+    $error .= '<link>#</link>';
+    $error .= '<description>' . htmlspecialchars($message) . '</description>';
+    $error .= '<pubDate>' . date(DATE_RSS, time()) . '</pubDate>';
+    $error .= '</item>';
     $error .= '</channel>';
     $error .= '</rss>';
     die($error);
 }
 
-// 尝试获取用户的真实IP地址，已适配cdn
+// 尝试获取用户的真实IP地址
 function getUserIP() {
     $client = $_SERVER['HTTP_CLIENT_IP'] ?? '';
     $forward = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
@@ -159,7 +163,8 @@ try {
     
     if ($content === false) {
         $error = error_get_last();
-        returnError('Failed to fetch RSS: ' . $error['message']);
+        //returnError('Failed to fetch RSS: ' . $error['message']);
+        returnError('Failed to fetch RSS content');
     }
 
     // 验证XML内容
@@ -175,7 +180,8 @@ try {
     echo $content;
 
 } catch (Exception $e) {
-    returnError('Error: ' . $e->getMessage());
+    //returnError('Error: ' . $e->getMessage());
+    returnError('Failed to Seed Request');
 }
 
 // 清理过期的频率限制记录
